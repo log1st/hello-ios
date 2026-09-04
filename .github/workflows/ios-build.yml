@@ -1,0 +1,79 @@
+name: iOS build
+
+# Собирает .ipa БЕЗ подписи и кладёт его в артефакты прогона.
+#
+# Почему без подписи: подписать сборку для конкретного айфона можно только
+# сертификатом того Apple ID, на который зарегистрировано устройство. Бесплатный
+# Apple ID такой сертификат в CI не отдаёт. Поэтому раннер собирает бинарь, а
+# подписывает его уже владелец у себя — Sideloadly или Xcode, за один шаг.
+#
+# Родословная: log1st/vpn-ios и log1st/jarvis-ios. Оттуда взяты выбор Xcode
+# (раннер держит 26.x только под версионированными путями) и XcodeGen вместо
+# pbxproj в git.
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Выбрать Xcode 26
+        # Голого Xcode_26.app на раннере нет, есть версионированные (Xcode_26.3.app).
+        # Берём новейший 26.x и падаем громко, если его нет вовсе: молчаливый откат
+        # на Xcode 16 дал бы зелёную сборку не тем компилятором.
+        run: |
+          XC="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$XC" ]; then
+            echo "::error::Xcode 26 на раннере не найден"
+            ls -d /Applications/Xcode_*.app || true
+            exit 1
+          fi
+          sudo xcode-select -switch "$XC"
+          xcodebuild -version
+
+      - name: Сгенерировать проект
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -list -project HelloTrust.xcodeproj
+
+      - name: Собрать без подписи
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project HelloTrust.xcodeproj \
+            -scheme HelloTrust \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Упаковать .ipa
+        run: |
+          APP="build/Build/Products/Release-iphoneos/HelloTrust.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::$APP не собрался"
+            find build -name '*.app' -maxdepth 6 || true
+            exit 1
+          fi
+          mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          cd out && zip -qry HelloTrust-unsigned.ipa Payload && ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HelloTrust-unsigned-ipa
+          path: out/HelloTrust-unsigned.ipa
+          retention-days: 30

@@ -1,0 +1,7 @@
+# Проект генерируется XcodeGen'ом — в репозитории его нет намеренно.
+*.xcodeproj
+build/
+out/
+DerivedData/
+.DS_Store
+xcuserdata/
