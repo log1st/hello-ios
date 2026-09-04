@@ -51,3 +51,25 @@ open HelloTrust.xcodeproj
   больше **10** App ID за 7 дней.
 - Пуши и iCloud бесплатной подписи недоступны. Всё, что внутри приложения —
   экраны, Keychain, сеть, камера, — работает.
+
+## Про CI: файл лежит не на месте, и это не описка
+
+`ci/ios-build.yml` — готовый workflow, но положить его в `.github/workflows/`
+сессия не смогла: токен, которым она работает, выдан без права `workflow`, и
+GitHub отвергает такой пуш (`refusing to allow an OAuth App to create or update
+workflow`). Ключ развёртывания не помогает — он унаследовал ограничение того,
+кто его создал.
+
+Лечится одним из двух:
+
+```sh
+# либо перенести файл своими руками
+git mv ci/ios-build.yml .github/workflows/ios-build.yml
+git commit -m "CI на место" && git push
+```
+
+либо выдать fine-grained PAT с правом **Workflows: write** на этот репозиторий —
+тогда сессия доведёт сама.
+
+Пока файл лежит в `ci/`, Actions его не видит, и сборки не будет: `.ipa` надо
+собирать локально Xcode'ом.
