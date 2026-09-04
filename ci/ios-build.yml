@@ -47,11 +47,20 @@ jobs:
           xcodebuild -list -project HelloTrust.xcodeproj
 
       - name: Собрать без подписи
+        # Схему XcodeGen заводит сам, но если вдруг не завёл — собираем по цели.
+        # Разница только в аргументе, а падение было бы невнятным: «scheme not found»
+        # читается как поломка проекта, хотя проект цел.
         run: |
           set -o pipefail
+          if xcodebuild -list -project HelloTrust.xcodeproj | grep -q '^        HelloTrust$'; then
+            SEL=(-scheme HelloTrust)
+          else
+            echo "::warning::схемы HelloTrust нет, собираю по цели"
+            SEL=(-target HelloTrust)
+          fi
           xcodebuild \
             -project HelloTrust.xcodeproj \
-            -scheme HelloTrust \
+            "${SEL[@]}" \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
